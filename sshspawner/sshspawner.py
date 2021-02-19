@@ -220,7 +220,7 @@ class SSHSpawner(LocalProcessSpawner):
     def spawn_as_user(self, cmd, timeout=10):
         """Run pexpect as the user spawning the notebook
 
-        This method attaches kerberos credentals to the command env if they
+        This method attaches kerberos credentials to the command env if they
         exist.
         """
 
