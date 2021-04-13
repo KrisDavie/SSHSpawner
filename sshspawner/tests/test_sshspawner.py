@@ -30,27 +30,24 @@ time.sleep(30)
 
 
 def new_spawner(db, **kwargs):
-    user = kwargs.setdefault('user', User(db.query(orm.User).first(), {}))
-    kwargs.setdefault('cmd', [sys.executable, '-c', _echo_sleep])
-    kwargs.setdefault('hub', Hub())
-    kwargs.setdefault('notebook_dir', os.getcwd())
-    kwargs.setdefault('default_url', '/user/{username}/lab')
-    kwargs.setdefault('oauth_client_id', 'mock-client-id')
-    kwargs.setdefault('interrupt_timeout', 1)
-    kwargs.setdefault('term_timeout', 1)
-    kwargs.setdefault('kill_timeout', 1)
-    kwargs.setdefault('poll_interval', 1)
-    return user._new_spawner('', spawner_class=SSHSpawner, **kwargs)
+    user = kwargs.setdefault("user", User(db.query(orm.User).first(), {}))
+    kwargs.setdefault("cmd", [sys.executable, "-c", _echo_sleep])
+    kwargs.setdefault("hub", Hub())
+    kwargs.setdefault("notebook_dir", os.getcwd())
+    kwargs.setdefault("default_url", "/user/{username}/lab")
+    kwargs.setdefault("oauth_client_id", "mock-client-id")
+    kwargs.setdefault("interrupt_timeout", 1)
+    kwargs.setdefault("term_timeout", 1)
+    kwargs.setdefault("kill_timeout", 1)
+    kwargs.setdefault("poll_interval", 1)
+    return user._new_spawner("", spawner_class=SSHSpawner, **kwargs)
 
 
 async def test_ssh_opts(db, request):
     spawner = new_spawner(db)
     known_hosts = "/foo/bar/baz"
     persist = 42
-    opts = spawner.ssh_opts(
-        known_hosts=known_hosts,
-        persist=persist
-    )
+    opts = spawner.ssh_opts(known_hosts=known_hosts, persist=persist)
 
     assert known_hosts in opts
     assert str(persist) in opts
@@ -95,7 +92,7 @@ def test_get_env(db):
     assert env["JUPYTERHUB_ADMIN_ACCESS"] == 0
 
     # if they are an admin in the hub settings, they should get admin access
-    spawner.user.settings['admin_users'] = [spawner.user.name]
+    spawner.user.settings["admin_users"] = [spawner.user.name]
     env = spawner.get_env(other_env=other_env)
     assert env["JUPYTERHUB_ADMIN_ACCESS"] == 1
 
@@ -124,8 +121,10 @@ async def test_create_start_script(db):
             script = fh.read()
             assert script
             assert "#!/bin/bash" in script
-            assert any([
+            assert any(
+                [
                     re.search(r"\s*env\s*", script, re.M),
                     re.search(r"\s*/bin/env\s*", script, re.M),
-                    re.search(r"\s*/usr/bin/env\s*", script, re.M)
-                ])
+                    re.search(r"\s*/usr/bin/env\s*", script, re.M),
+                ]
+            )
