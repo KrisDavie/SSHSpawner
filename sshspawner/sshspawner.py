@@ -149,29 +149,6 @@ class SSHSpawner(LocalProcessSpawner):
         options["host"] = pipes.quote(formdata.get("host", [""])[0].strip())
         return options
 
-    def ips_for_host(self, host):
-        """Return all the ips reported by the host command"""
-
-        ip_pattern = r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-        child = pexpect.spawn("host {}".format(host), encoding="utf-8")
-        i = child.expect([r"Host \w+ not found", ".*has address.*"])
-        if i == 0:
-            raise HostNotFound(host)
-        else:
-            lines = child.after.split("\n")
-
-            # Look for ip addresses and build a list of the ones found
-            lines = [
-                match.group()
-                for match in [re.search(ip_pattern, line) for line in lines]
-                if match
-            ]
-
-            if len(lines) == 0:
-                raise HostNotFound(host)
-
-            return lines
-
     def ssh_opts(self, persist=180, known_hosts="", batch_mode=True, other_opts=None):
         """Default set of options to attach to ssh commands
 
@@ -257,21 +234,6 @@ class SSHSpawner(LocalProcessSpawner):
             )
             child.expect(pexpect.EOF)
             return env_str_to_dict(child.before)
-
-    def ip_for_host(self, host):
-        """Return an ip for a given host
-
-        This method is meant to pick from a series of ips that come back from
-        invoking the host command. This could be used to implement load
-        balancing.
-        """
-
-        ips = self.ips_for_host(host)
-        random.shuffle(ips)
-        for ip in ips:
-            if can_connect(ip, 22):
-                return ip
-        raise ConnectionError(host)
 
     def get_env(self, other_env=None):
         """Get environment variables to be set in the spawned process."""
@@ -390,7 +352,7 @@ class SSHSpawner(LocalProcessSpawner):
             gid = user.pw_gid
             self.port = random_port()
             host = pipes.quote(self.user_options["host"])
-            self.ssh_target = self.ip_for_host(host)
+            self.ssh_target = host
             remote_env = await self.remote_env(host=self.ssh_target)
             opts = self.ssh_opts(
                 persist=self.ssh_control_persist_time, known_hosts=self.known_hosts

@@ -58,15 +58,6 @@ async def test_ssh_opts(db, request):
     assert "StrictHostKeyChecking=no" in no_check_opts
 
 
-def test_ips_for_host(db):
-    spawner = new_spawner(db)
-    ip_pattern = r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-    ips = spawner.ips_for_host("example.com")
-
-    assert len(ips) != 0
-    assert any(re.search(ip_pattern, ip) for ip in ips)
-
-
 async def test_spawn_as_user(db):
     spawner = new_spawner(db)
 
