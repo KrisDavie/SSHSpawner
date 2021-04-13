@@ -42,12 +42,12 @@ _script_template = """#!/bin/bash
 
 class HostNotFound(Exception):
     def __init__(self, host):
-        super().__init__(self, "Unable to locate host {host}.".format(host=host))
+        super().__init__(self, f"Unable to locate host {host}.")
 
 
 class ConnectionError(Exception):
     def __init__(self, host):
-        super().__init__(self, "Unable to connect to host {host}".format(host=host))
+        super().__init__(self, f"Unable to connect to host {host}")
 
 
 class SSHSpawner(LocalProcessSpawner):
@@ -114,7 +114,7 @@ class SSHSpawner(LocalProcessSpawner):
 
     @property
     def ssh_socket(self):
-        return "/tmp/{user}@{host}".format(user=self.user.name, host=self.ssh_target)
+        return f"/tmp/{self.user.name}@{self.ssh_target}"
 
     def get_user_ssh_hosts(self):
         return self.ssh_hosts
@@ -129,18 +129,12 @@ class SSHSpawner(LocalProcessSpawner):
             <label for="host">Input host for notebook launch:</label>
             <input type="text" name="host" class="form-control">
             """
-        host_option_template = '<option value="{host}">{host}</option>'
-        host_option_tags = []
-        for host in hosts:
-            host_option_tags.append(host_option_template.format(host=host))
-        options = "".join(host_option_tags)
+        options = "".join([f'<option value="{host}">{host}</option>' for host in hosts])
 
-        return """
+        return f"""
         <label for="host">Select host for notebook launch:</label>
         <select name="host" class="form-control">{options}</select>
-        """.format(
-            options=options
-        )
+        """
 
     def options_from_form(self, formdata):
         """Turn html formdata from `options_form` into a dict for later use"""
@@ -177,8 +171,7 @@ class SSHSpawner(LocalProcessSpawner):
         if other_opts:
             opts.extend(other_opts)
 
-        tmpl = "-o {opt}={val}"
-        return " ".join([tmpl.format(opt=opt, val=val) for opt, val in opts.items()])
+        return "-T " + " ".join([f"-o {opt}={val}" for opt, val in opts.items()])
 
     def spawn_as_user(self, cmd, timeout=10):
         """Run pexpect as the user spawning the notebook
@@ -190,7 +183,7 @@ class SSHSpawner(LocalProcessSpawner):
         user = pwd.getpwnam(self.user.name)
         uid = user.pw_uid
         env = os.environ
-        krb_files = glob("/tmp/krb5cc_{uid}*".format(uid=uid))
+        krb_files = glob(f"/tmp/krb5cc_{uid}*")
         if krb_files:
             env["KRB5CCNAME"] = max(krb_files, key=os.path.getctime)
 
@@ -201,7 +194,7 @@ class SSHSpawner(LocalProcessSpawner):
             preexec_fn=self.make_preexec_fn(self.user.name),
         )
 
-        self.log.debug("Running: {cmd} as {user}".format(cmd=cmd, user=self.user.name))
+        self.log.debug(f"Running: {cmd} as {self.user.name}")
         return popen_spawn.PopenSpawn(cmd, **popen_kwargs)
 
     async def remote_env(self, host=None):
@@ -228,10 +221,8 @@ class SSHSpawner(LocalProcessSpawner):
 
         if host:
             opts = self.ssh_opts(known_hosts=self.known_hosts)
-            self.log.info("Collecting remote environment from {}".format(host))
-            child = self.spawn_as_user(
-                "ssh {opts} {host} env".format(opts=opts, host=host)
-            )
+            self.log.info(f"Collecting remote environment from {host}")
+            child = self.spawn_as_user(f"ssh {opts} {host} env")
             child.expect(pexpect.EOF)
             return env_str_to_dict(child.before)
 
@@ -285,24 +276,14 @@ class SSHSpawner(LocalProcessSpawner):
         args = super().get_args()
         if self.allow_origin_pattern:
             args.append(
-                "--SingleUserNotebookApp.allow_origin_pat={patt}".format(
-                    patt=self.allow_origin_pattern
-                )
+                f"--SingleUserNotebookApp.allow_origin_pat={self.allow_origin_pattern}"
             )
 
-        args.append(
-            "--MappingKernelManager.cull_idle_timeout={timeout}".format(
-                timeout=self.idle_timeout
-            )
-        )
+        args.append(f"--MappingKernelManager.cull_idle_timeout={self.idle_timeout}")
         args.append("--KernelManager.transport=ipc")
 
         if self.local_logfile:
-            args.append(
-                "2>&1 | tee -a {base}/{logfile}".format(
-                    base=self.resource_path, logfile=self.local_logfile
-                )
-            )
+            args.append(f"2>&1 | tee -a {self.resource_path}/{self.local_logfile}")
 
         return args
 
@@ -330,10 +311,7 @@ class SSHSpawner(LocalProcessSpawner):
         uid = user.pw_uid
         gid = user.pw_gid
         env = self.get_env(other_env=remote_env)
-        quoted_env = ["env"] + [
-            pipes.quote("{var}={val}".format(var=var, val=val))
-            for var, val in env.items()
-        ]
+        quoted_env = ["env"] + [pipes.quote(f"{var}={val}") for var, val in env.items()]
         # environment + cmd + args
         cmd = quoted_env + self.cmd + self.get_args()
 
@@ -372,25 +350,19 @@ class SSHSpawner(LocalProcessSpawner):
 
             # Create remote directory in user's home
             create_dir_proc = self.spawn_as_user(
-                "ssh {opts} {host} mkdir -p {path}".format(
-                    opts=opts, host=self.ssh_target, path=self.resource_path
-                )
+                f"ssh {opts} {self.ssh_target} mkdir -p {self.resource_path}"
             )
             create_dir_proc.expect(pexpect.EOF)
 
+            files = " ".join(
+                [
+                    os.path.join(local_resource_path, f)
+                    for f in os.listdir(local_resource_path)
+                ]
+            )
+
             copy_files_proc = self.spawn_as_user(
-                "scp {opts} {files} {host}:{target_dir}/".format(
-                    opts=opts,
-                    files=" ".join(
-                        [
-                            os.path.join(local_resource_path, f)
-                            for f in os.listdir(local_resource_path)
-                        ]
-                    ),
-                    cp_dir=local_resource_path,
-                    host=self.ssh_target,
-                    target_dir=self.resource_path,
-                )
+                f"scp {opts} {files} {self.ssh_target}:{self.resource_path}/"
             )
             i = copy_files_proc.expect(
                 [
@@ -401,29 +373,17 @@ class SSHSpawner(LocalProcessSpawner):
             )
 
             if i == 0:
-                raise IOError(
-                    "No such file or directory: {}".format(local_resource_path)
-                )
+                raise IOError(f"No such file or directory: {local_resource_path}")
             elif i == 1:
-                raise HostNotFound(
-                    "Could not resolve hostname {}".format(self.ssh_target)
-                )
+                raise HostNotFound(f"Could not resolve hostname {self.ssh_target}")
             elif i == 2:
                 self.log.info(
-                    "Copied resources for {user} to {host}".format(
-                        user=self.user.name, host=self.ssh_target
-                    )
+                    f"Copied resources for {self.user.name} to {self.ssh_target}"
                 )
 
             # Start remote notebook
             start_notebook_child = self.spawn_as_user(
-                "ssh {opts} -L {port}:{ip}:{port} {host} {cmd}".format(
-                    ip="127.0.0.1",
-                    port=self.port,
-                    opts=opts,
-                    host=self.ssh_target,
-                    cmd=os.path.join(self.resource_path, self.start_notebook_cmd),
-                ),
+                f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target} {os.path.join(self.resource_path, self.start_notebook_cmd)}",
                 timeout=None,
             )
 
@@ -452,16 +412,11 @@ class SSHSpawner(LocalProcessSpawner):
         if status is not None:
             return
         self.log.info(
-            "Stopping user {user}'s notebook at port {port} on host "
-            "{host}".format(user=self.user.name, port=self.port, host=self.ssh_target)
+            f"Stopping user {self.user.name}'s notebook at port {self.port} on host {self.ssh_target}"
         )
 
         stop_child = self.spawn_as_user(
-            "ssh {opts} {host} {cmd}".format(
-                opts=self.ssh_opts(known_hosts=self.known_hosts),
-                host=self.ssh_target,
-                cmd=self.stop_notebook_cmd,
-            )
+            f"ssh {self.ssh_opts(known_hosts=self.known_hosts)} {self.ssh_target} {self.stop_notebook_cmd}"
         )
         stop_child.expect(pexpect.EOF)
         ret_code = stop_child.wait()
@@ -492,9 +447,8 @@ class SSHSpawner(LocalProcessSpawner):
             return 0
         else:
             protocol = "http" if not self.user.settings["internal_ssl"] else "https"
-            url = "{protocol}://{ip}:{port}".format(
-                protocol=protocol, ip=(self.ip or "127.0.0.1"), port=self.port
-            )
+            ip = self.ip or "127.0.0.1"
+            url = f"{protocol}://{ip}:{self.port}"
             key = self.user.settings.get("internal_ssl_key")
             cert = self.user.settings.get("internal_ssl_cert")
             ca = self.user.settings.get("internal_ssl_ca")
@@ -505,17 +459,13 @@ class SSHSpawner(LocalProcessSpawner):
                 if isinstance(e, TimeoutError):
                     e.reason = "timeout"
                     self.log.warning(
-                        "Unable to reach {user}'s server for 10 seconds. "
-                        "Giving up: {err}".format(user=self.user.name, err=e),
+                        "Unable to reach {self.user.name}'s server for 10 seconds. "
+                        "Giving up: {e}",
                     )
                     return 1
                 else:
                     e.reason = "error"
-                    self.log.warning(
-                        "Error reaching {user}'s server: {err}".format(
-                            user=self.user.name, err=e
-                        )
-                    )
+                    self.log.warning("Error reaching {self.user.name}'s server: {e}")
                     return 2
             else:
                 return None if reachable else 0
