@@ -66,7 +66,7 @@ class SSHSpawner(LocalProcessSpawner):
     ).tag(config=True)
 
     known_hosts = Unicode(
-        "/opt/jupyter/known_hosts",
+        "",
         help="Premade known_hosts file to enable trusted, seamless ssh.",
     ).tag(config=True)
 
