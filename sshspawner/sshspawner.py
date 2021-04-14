@@ -342,7 +342,8 @@ class SSHSpawner(LocalProcessSpawner):
             )
             remote_env = await self.remote_env(host=self.ssh_target)
 
-            self.cert_paths = self.stage_certs(self.cert_paths, local_resource_path)
+            if self.user.settings["internal_ssl"]:
+                self.cert_paths = self.stage_certs(self.cert_paths, local_resource_path)
 
             ports_proc = self.spawn_as_user(
                 f"ssh {opts} {self.ssh_target} /usr/bin/python {self.get_port_remote_location}"
@@ -461,13 +462,17 @@ class SSHSpawner(LocalProcessSpawner):
             # tunnel is closed or non-existent
             return 0
         else:
-            protocol = "http" if not self.user.settings["internal_ssl"] else "https"
+            if self.user.settings["internal_ssl"]:
+                protocol = "https"
+                key = self.user.settings.get("internal_ssl_key")
+                cert = self.user.settings.get("internal_ssl_cert")
+                ca = self.user.settings.get("internal_ssl_ca")
+                ctx = make_ssl_context(key, cert, cafile=ca)
+            else:
+                protocol = "http"
+                ctx = None
             ip = self.ip or "127.0.0.1"
             url = f"{protocol}://{ip}:{self.port}"
-            key = self.user.settings.get("internal_ssl_key")
-            cert = self.user.settings.get("internal_ssl_cert")
-            ca = self.user.settings.get("internal_ssl_ca")
-            ctx = make_ssl_context(key, cert, cafile=ca)
             try:
                 reachable = await wait_for_http_server(url, ssl_context=ctx)
             except Exception as e:
