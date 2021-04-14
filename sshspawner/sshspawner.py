@@ -120,6 +120,15 @@ class SSHSpawner(LocalProcessSpawner):
         help="""The local path to the get_port script""",
     ).tag(config=True)
 
+    conda_env_loc = Unicode("", help="Path to a conda env on the remote server.").tag(
+        config=True
+    )
+
+    conda_env_name = Unicode(
+        "",
+        help="Name for a specific environment in the conda env on the remote server.",
+    ).tag(config=True)
+
     @property
     def ssh_socket(self):
         return f"/tmp/sshspawner-{self.user.name}@{self.ssh_target}"
@@ -332,7 +341,17 @@ class SSHSpawner(LocalProcessSpawner):
         env = self.get_env(other_env=remote_env)
         quoted_env = ["env"] + [pipes.quote(f"{var}={val}") for var, val in env.items()]
         # environment + cmd + args
-        cmd = quoted_env + self.cmd + self.get_args()
+        if self.conda_env_loc and self.conda_env_name:
+            cmd = (
+                [
+                    f'source {os.path.join(self.conda_env_loc, "bin", "activate")}; conda activate {self.conda_env_name};'
+                ]
+                + quoted_env
+                + self.cmd
+                + self.get_args()
+            )
+        else:
+            cmd = quoted_env + self.cmd + self.get_args()
 
         with open(start_script, "w") as fh:
             fh.write(_script_template.format(" ".join(cmd)))
