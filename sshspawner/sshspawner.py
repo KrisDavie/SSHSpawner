@@ -348,10 +348,10 @@ class SSHSpawner(LocalProcessSpawner):
             user = pwd.getpwnam(self.user.name)
             uid = user.pw_uid
             gid = user.pw_gid
-            self.port = random_port()
             host = pipes.quote(self.user_options["host"])
+            self.resource_path = os.path.join(self.resource_path, host)
             self.ssh_target = host
-            remote_env = await self.remote_env(host=self.ssh_target)
+
             opts = self.ssh_opts(
                 persist=self.ssh_control_persist_time, known_hosts=self.known_hosts
             )
