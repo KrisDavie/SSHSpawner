@@ -14,7 +14,6 @@ import os
 import pipes
 import pwd
 import re
-import random
 import stat
 import pexpect
 import shutil
@@ -27,8 +26,6 @@ from jupyterhub.spawner import LocalProcessSpawner
 from traitlets import default
 from traitlets import Bool, Integer, Unicode, Int, List
 from jupyterhub.utils import (
-    random_port,
-    can_connect,
     wait_for_http_server,
     make_ssl_context,
 )
@@ -266,7 +263,8 @@ class SSHSpawner(LocalProcessSpawner):
 
         env["JUPYTERHUB_CLEANUP_SERVERS"] = self.cleanup_server
         env["JUPYTERHUB_CHECK_INTERVAL"] = self.hub_check_interval * 60
-        env["JUPYTERHUB_MAX_LIFETIME"] = self.notebook_max_lifetime * 60 * 60
+        if self.notebook_max_lifetime:
+            env["JUPYTERHUB_MAX_LIFETIME"] = self.notebook_max_lifetime * 60 * 60
 
         # This is to account for running JupyterHub in a container since the
         # container hostname will be meaningless.
@@ -299,7 +297,8 @@ class SSHSpawner(LocalProcessSpawner):
                 f"--SingleUserNotebookApp.allow_origin_pat={self.allow_origin_pattern}"
             )
 
-        args.append(f"--MappingKernelManager.cull_idle_timeout={self.idle_timeout}")
+        if self.idle_timeout:
+            args.append(f"--MappingKernelManager.cull_idle_timeout={self.idle_timeout}")
         args.append("--KernelManager.transport=ipc")
 
         if self.local_logfile:
@@ -422,10 +421,13 @@ class SSHSpawner(LocalProcessSpawner):
             self.pid = self.proc.pid
 
             if self.ip:
-                self.user.server.ip = self.ip
-            self.user.server.port = self.port
+                self.user.ip = self.ip
+            else:
+                self.ip = "127.0.0.1"
+                self.user.ip = self.ip
+            self.user.port = self.port
 
-            return (self.ip or "127.0.0.1", self.port)
+            return (self.ip, self.port)
 
     async def stop(self, now=False):
         """Stop the remote single-user server process for the current user.
@@ -494,13 +496,13 @@ class SSHSpawner(LocalProcessSpawner):
                 if isinstance(e, TimeoutError):
                     e.reason = "timeout"
                     self.log.warning(
-                        "Unable to reach {self.user.name}'s server for 10 seconds. "
-                        "Giving up: {e}",
+                        f"Unable to reach {self.user.name}'s server for 10 seconds. "
+                        f"Giving up: {e}",
                     )
                     return 1
                 else:
                     e.reason = "error"
-                    self.log.warning("Error reaching {self.user.name}'s server: {e}")
+                    self.log.warning(f"Error reaching {self.user.name}'s server: {e}")
                     return 2
             else:
                 return None if reachable else 0
