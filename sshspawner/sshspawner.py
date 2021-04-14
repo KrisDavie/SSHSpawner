@@ -112,6 +112,11 @@ class SSHSpawner(LocalProcessSpawner):
         "stop-notebook", help="""The command to run to stop a running notebook"""
     ).tag(config=True)
 
+    get_port_remote_location = Unicode(
+        ".jupyter/jupyterhub/scripts/get_port.py",
+        help="""The local path to the get_port script""",
+    ).tag(config=True)
+
     @property
     def ssh_socket(self):
         return f"/tmp/{self.user.name}@{self.ssh_target}"
@@ -335,10 +340,20 @@ class SSHSpawner(LocalProcessSpawner):
             opts = self.ssh_opts(
                 persist=self.ssh_control_persist_time, known_hosts=self.known_hosts
             )
+            remote_env = await self.remote_env(host=self.ssh_target)
 
             self.cert_paths = self.stage_certs(self.cert_paths, local_resource_path)
 
+            ports_proc = self.spawn_as_user(
+                f"ssh {opts} {self.ssh_target} /usr/bin/python {self.get_port_remote_location}"
+            )
+
+            ports_proc.expect("[0-9]{1,5}\s[0-9]{1,5}")
+            notebook_port, r_proxy_port = ports_proc.after.split()
+            self.port = int(notebook_port)
+
             # Create the start script (part of resources)
+
             await self.create_start_script(start_script, remote_env=remote_env)
 
             # Set proper ownership to the user we'll run as
