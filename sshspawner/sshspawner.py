@@ -125,7 +125,7 @@ class SSHSpawner(LocalProcessSpawner):
 
     @property
     def ssh_socket(self):
-        return f"/tmp/{self.user.name}@{self.ssh_target}"
+        return f"/tmp/sshspawner-{self.user.name}@{self.ssh_target}"
 
     def get_user_ssh_hosts(self):
         return self.ssh_hosts
@@ -177,7 +177,7 @@ class SSHSpawner(LocalProcessSpawner):
 
         opts = {
             "ControlMaster": "auto",
-            "ControlPath": "/tmp/%r@%h",
+            "ControlPath": "/tmp/sshspawner-%u@%n",
             "ControlPersist": persist,
             "BatchMode": batch_mode,
         }
