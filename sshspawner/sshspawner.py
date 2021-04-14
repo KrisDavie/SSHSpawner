@@ -336,6 +336,18 @@ class SSHSpawner(LocalProcessSpawner):
             "cafile": ca,
         }
 
+    async def create_stop_script(self, stop_script):
+        user = pwd.getpwnam(self.user.name)
+        uid = user.pw_uid
+        gid = user.pw_gid
+
+        with open(stop_script, "w") as fh:
+            fh.write(
+                f"ps x | grep '{self.cmd[0]} --port={self.port}' | awk '{{print $1}}' | xargs kill"
+            )
+            shutil.chown(stop_script, user=uid, group=gid)
+            os.chmod(stop_script, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+
     async def create_start_script(self, start_script, remote_env=None):
         user = pwd.getpwnam(self.user.name)
         uid = user.pw_uid
@@ -364,6 +376,7 @@ class SSHSpawner(LocalProcessSpawner):
         with TemporaryDirectory() as td:
             local_resource_path = td
             start_script = os.path.join(local_resource_path, self.start_notebook_cmd)
+            stop_script = os.path.join(local_resource_path, self.stop_notebook_cmd)
 
             user = pwd.getpwnam(self.user.name)
             uid = user.pw_uid
@@ -391,6 +404,7 @@ class SSHSpawner(LocalProcessSpawner):
             # Create the start script (part of resources)
 
             await self.create_start_script(start_script, remote_env=remote_env)
+            await self.create_stop_script(stop_script)
 
             # Set proper ownership to the user we'll run as
             for f in [local_resource_path] + [
@@ -470,7 +484,7 @@ class SSHSpawner(LocalProcessSpawner):
         )
 
         stop_child = self.spawn_as_user(
-            f"ssh {self.ssh_opts(known_hosts=self.known_hosts)} {self.ssh_target} {self.stop_notebook_cmd}"
+            f"ssh {self.ssh_opts(known_hosts=self.known_hosts)} {self.ssh_target} {os.path.join(self.resource_path, self.stop_notebook_cmd)}"
         )
         stop_child.expect(pexpect.EOF)
         ret_code = stop_child.wait()
