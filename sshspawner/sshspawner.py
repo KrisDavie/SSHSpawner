@@ -112,6 +112,12 @@ class SSHSpawner(LocalProcessSpawner):
         "stop-notebook", help="""The command to run to stop a running notebook"""
     ).tag(config=True)
 
+    ssh_host_prefix = Unicode(
+        "",
+        help="""A prefix added to hosts in ssh configs. Typically used to prevent 
+        interaction between user and system ssh settings.""",
+    ).tag(config=True)
+
     get_port_remote_location = Unicode(
         ".jupyter/jupyterhub/scripts/get_port.py",
         help="""The local path to the get_port script""",
@@ -134,8 +140,17 @@ class SSHSpawner(LocalProcessSpawner):
             <label for="host">Input host for notebook launch:</label>
             <input type="text" name="host" class="form-control">
             """
-        options = "".join([f'<option value="{host}">{host}</option>' for host in hosts])
-
+        if self.ssh_host_prefix:
+            options = "".join(
+                [
+                    f'<option value="{host}">{host[len(self.ssh_host_prefix):]}</option>'
+                    for host in hosts
+                ]
+            )
+        else:
+            options = "".join(
+                [f'<option value="{host}">{host}</option>' for host in hosts]
+            )
         return f"""
         <label for="host">Select host for notebook launch:</label>
         <select name="host" class="form-control">{options}</select>
