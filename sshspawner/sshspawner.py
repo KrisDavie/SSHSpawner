@@ -285,6 +285,8 @@ class SSHSpawner(LocalProcessSpawner):
             env["JUPYTERHUB_ACTIVITY_URL"], hostname=self.hostname
         )
 
+        env["JUPYTER_RUNTIME_DIR"] = os.path.join("/tmp", env["USER"], "sshspawner")
+
         # If the user starting their notebook is in the list of admins
         if self.user.name in self.user.settings.get("admin_users", []):
             env["JUPYTERHUB_ADMIN_ACCESS"] = 1
