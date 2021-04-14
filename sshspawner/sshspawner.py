@@ -191,7 +191,7 @@ class SSHSpawner(LocalProcessSpawner):
         if other_opts:
             opts.extend(other_opts)
 
-        return "-T " + " ".join([f"-o {opt}={val}" for opt, val in opts.items()])
+        return f"-T " + " ".join([f"-o {opt}={val}" for opt, val in opts.items()])
 
     def spawn_as_user(self, cmd, timeout=10):
         """Run pexpect as the user spawning the notebook
@@ -243,7 +243,7 @@ class SSHSpawner(LocalProcessSpawner):
             opts = self.ssh_opts(known_hosts=self.known_hosts)
             self.log.info(f"Collecting remote environment from {host}")
             child = self.spawn_as_user(f"ssh {opts} {host} env")
-            child.expect(pexpect.EOF)
+            child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=10)
             return env_str_to_dict(child.before)
 
     def get_env(self, other_env=None):
