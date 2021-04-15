@@ -129,6 +129,18 @@ class SSHSpawner(LocalProcessSpawner):
         help="Name for a specific environment in the conda env on the remote server.",
     ).tag(config=True)
 
+    remote_notebook_env = Unicode(
+        "",
+        help="Environment variable containing remote location for notebooks.",
+    ).tag(config=True)
+
+    remote_notebook_folder = Unicode(
+        "",
+        help="Folder to contain remote notebooks.",
+    ).tag(config=True)
+
+    lab_enabled = Bool(True, help="Using jupyterlab?").tag(config=True)
+
     @property
     def ssh_socket(self):
         return f"/tmp/sshspawner-{self.user.name}@{self.ssh_target}"
@@ -401,6 +413,29 @@ class SSHSpawner(LocalProcessSpawner):
             ports_proc.expect("[0-9]{1,5}\s[0-9]{1,5}")
             notebook_port, r_proxy_port = ports_proc.after.split()
             self.port = int(notebook_port)
+
+            env = self.get_env(other_env=remote_env)
+
+            if self.remote_notebook_env:
+                self.notebook_path = env[self.remote_notebook_env]
+                if not self.notebook_path.startswith("/"):
+                    self.notebook_path = f"/{self.notebook_path}"
+
+                if self.remote_notebook_folder:
+                    self.notebook_path = os.path.join(
+                        self.notebook_path, self.remote_notebook_folder
+                    )
+                if self.lab_enabled:
+                    self.default_url = f"/lab/tree{self.notebook_path}"
+                    self.notebook_dir = "/"
+                else:
+                    self.default_url = f"/tree{self.notebook_path}"
+                    self.notebook_dir = "/"
+
+                create_notebook_dir_proc = self.spawn_as_user(
+                    f"ssh {opts} {self.ssh_target} mkdir -p {self.notebook_path}"
+                )
+                create_notebook_dir_proc.expect(pexpect.EOF)
 
             # Create the start script (part of resources)
 
