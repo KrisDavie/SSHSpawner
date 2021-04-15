@@ -141,6 +141,8 @@ class SSHSpawner(LocalProcessSpawner):
 
     lab_enabled = Bool(True, help="Using jupyterlab?").tag(config=True)
 
+    _stopping = False
+
     @property
     def ssh_socket(self):
         return f"/tmp/sshspawner-{self.user.name}@{self.ssh_target}"
@@ -513,7 +515,7 @@ class SSHSpawner(LocalProcessSpawner):
         """
 
         status = await self.poll()
-        if status is not None:
+        if status is not None and status != 255:
             return
         self.log.info(
             f"Stopping user {self.user.name}'s notebook at port {self.port} on host {self.ssh_target}"
@@ -527,8 +529,10 @@ class SSHSpawner(LocalProcessSpawner):
         if ret_code == 0:
             self.log.info("Notebook stopped")
 
-        self.log.debug("Killing %i", self.pid)
-        await self._signal(signal.SIGKILL)
+        if self.pid > 0:
+            self.log.debug("Killing %i", self.pid)
+
+            await self._signal(signal.SIGKILL)
 
         # close the tunnel
         os.remove(self.ssh_socket)
@@ -541,10 +545,12 @@ class SSHSpawner(LocalProcessSpawner):
         running, or unreachable we return the exit code of the process if we
         have access to it, or 0 otherwise.
         """
-
         status = await super().poll()
 
         if status is not None:
+            if status == 255 and not self._stopping:
+                self._stopping = True
+                await self.stop()
             return status
         elif not os.path.exists(self.ssh_socket):
             # tunnel is closed or non-existent
