@@ -355,19 +355,18 @@ class SSHSpawner(LocalProcessSpawner):
         uid = user.pw_uid
         gid = user.pw_gid
         env = self.get_env(other_env=remote_env)
+
+        if self.conda_env_loc:
+            if self.conda_env_name:
+                env[
+                    "PATH"
+                ] += f':{os.path.join(self.conda_env_loc, "envs", self.conda_env_name, "bin")}'
+            else:
+                env["PATH"] += f':{os.path.join(self.conda_env_loc, "bin")}'
+
         quoted_env = ["env"] + [pipes.quote(f"{var}={val}") for var, val in env.items()]
         # environment + cmd + args
-        if self.conda_env_loc and self.conda_env_name:
-            cmd = (
-                [
-                    f'source {os.path.join(self.conda_env_loc, "bin", "activate")}; conda activate {self.conda_env_name};'
-                ]
-                + quoted_env
-                + self.cmd
-                + self.get_args()
-            )
-        else:
-            cmd = quoted_env + self.cmd + self.get_args()
+        cmd = quoted_env + self.cmd + self.get_args()
 
         with open(start_script, "w") as fh:
             fh.write(_script_template.format(" ".join(cmd)))
