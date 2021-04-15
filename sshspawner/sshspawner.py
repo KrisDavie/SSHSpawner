@@ -419,7 +419,12 @@ class SSHSpawner(LocalProcessSpawner):
             env = self.get_env(other_env=remote_env)
 
             if self.remote_notebook_env:
-                self.notebook_path = env[self.remote_notebook_env]
+                # Specific code for the VSC, sometimes VSC_DATA is missing
+                if self.remote_notebook_env == "VSC_DATA":
+                    _vscuser = env["USER"]
+                    self.notebook_path = f"/data/leuven/{_vscuser[3:6]}/{_vscuser}"
+                else:
+                    self.notebook_path = env[self.remote_notebook_env]
                 if not self.notebook_path.startswith("/"):
                     self.notebook_path = f"/{self.notebook_path}"
 
