@@ -18,6 +18,7 @@ import stat
 import pexpect
 import shutil
 import signal
+import psutil
 from glob import glob
 from urllib.parse import urlparse, urlunparse
 from pexpect import popen_spawn
