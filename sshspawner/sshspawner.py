@@ -142,6 +142,85 @@ class SSHSpawner(LocalProcessSpawner):
     lab_enabled = Bool(True, help="Using jupyterlab?").tag(config=True)
 
     _stopping = False
+    _started = True
+
+    def load_state(self, state):
+        """Restore state about spawned single-user server after a hub restart.
+
+        Local processes only need the process id.
+        """
+        super(SSHSpawner, self).load_state(state)
+        if state == {}:
+            return
+
+        self.pid = state.get("pid", 0)
+        self.ssh_target = state.get("ssh_target", "")
+        self.port = state.get("port", "")
+
+        proc_found = False
+
+        if self.pid == 0:
+            self.log.debug("Stored PID is 0")
+
+        for p in psutil.process_iter():
+            if (
+                f"{self.port}:127.0.0.1:{self.port}" in p.cmdline()
+                and p.username() == self.user.name
+            ):
+                self.log.debug(
+                    f"Found existing tunnel with correct port ({self.port}) and user ({self.user.name})"
+                )
+                proc_found = True
+                if p.pid != self.pid and self.pid > 0:
+                    self.log.warning(
+                        "PID of found process is NOT the same as... updating"
+                    )
+                    self.pid = p.pid
+                break
+
+        if not proc_found:
+            self.log.info(
+                f"Tunnel was not found. Opening new tunnel on port: {self.port} to {self.ssh_target} for {self.user.name}"
+            )
+            opts = self.ssh_opts(
+                persist=self.ssh_control_persist_time, known_hosts=self.known_hosts
+            )
+
+            check_server_exists = self.spawn_as_user(
+                f"ssh {opts} {self.ssh_target} \"ps x | grep '{self.cmd[0]} --port={self.port}' | wc -l\" 2>/dev/null",
+                timeout=None,
+            )
+
+            check_server_exists.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=10)
+
+            if int(check_server_exists.before.split()[-1]) <= 2:
+                self.log.error(
+                    f"Existing server on host {self.ssh_target}:{self.port} does not exist remotely for user {self.user.name}!"
+                )
+            else:
+                self._started = True
+
+                start_tunnel_child = self.spawn_as_user(
+                    f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target}",
+                    timeout=None,
+                )
+                self.proc = start_tunnel_child.proc
+                self.pid = self.proc.pid
+
+    def get_state(self):
+        """Save state that is needed to restore this spawner instance after a hub restore.
+
+        Local processes only need the process id.
+        """
+        state = super(SSHSpawner, self).get_state()
+        if self.pid:
+            state["pid"] = self.pid
+        if self.ssh_target:
+            state["ssh_target"] = self.ssh_target
+        if self.port:
+            state["port"] = self.port
+
+        return state
 
     @property
     def ssh_socket(self):
@@ -557,7 +636,7 @@ class SSHSpawner(LocalProcessSpawner):
                 self._stopping = True
                 await self.stop()
             return status
-        elif not os.path.exists(self.ssh_socket):
+        elif not os.path.exists(self.ssh_socket) and not self._started:
             # tunnel is closed or non-existent
             return 0
         else:
