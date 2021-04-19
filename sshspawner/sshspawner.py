@@ -144,6 +144,12 @@ class SSHSpawner(LocalProcessSpawner):
         help="Folder to contain remote notebooks.",
     ).tag(config=True)
 
+    pre_server_startup_script = Dict(
+        Unicode(),
+        help="""Dict. Keys are hosts as defined in `ssh_hosts`, values are strings 
+        containing a bash snippet to run beore launching the single-user server.""",
+    ).tag(config=True)
+
     lab_enabled = Bool(True, help="Using jupyterlab?").tag(config=True)
 
     _stopping = False
@@ -448,11 +454,16 @@ class SSHSpawner(LocalProcessSpawner):
             shutil.chown(stop_script, user=uid, group=gid)
             os.chmod(stop_script, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
-    async def create_start_script(self, start_script, remote_env=None):
+    async def create_start_script(self, local_resource_path, remote_env=None):
         user = pwd.getpwnam(self.user.name)
         uid = user.pw_uid
         gid = user.pw_gid
         env = self.get_env(other_env=remote_env)
+
+        pre_start_script = os.path.join(
+            local_resource_path, f"pre_{self.start_notebook_cmd}"
+        )
+        start_script = os.path.join(local_resource_path, self.start_notebook_cmd)
 
         if self.ssh_target in self.conda_env_loc:
             if self.ssh_target in self.conda_env_name:
@@ -464,19 +475,30 @@ class SSHSpawner(LocalProcessSpawner):
                     "PATH"
                 ] += f':{os.path.join(self.conda_env_loc[self.ssh_target], "bin")}'
 
-        quoted_env = ["env"] + [pipes.quote(f"{var}={val}") for var, val in env.items()]
+        quoted_env = (
+            ["env"]
+            + [pipes.quote(f"{var}={val}") for var, val in env.items()]
+            + [f"{os.path.join(self.resource_path, self.start_notebook_cmd)}"]
+        )
+
+        with open(pre_start_script, "w") as fh:
+            fh.write(_script_template.format(" ".join(quoted_env)))
+            shutil.chown(pre_start_script, user=uid, group=gid)
+            os.chmod(pre_start_script, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+
         # environment + cmd + args
-        cmd = quoted_env + self.cmd + self.get_args()
+        cmd = [" ".join(self.cmd + self.get_args())]
+        if self.ssh_target in self.pre_server_startup_script:
+            cmd = [self.pre_server_startup_script[self.ssh_target]] + cmd
 
         with open(start_script, "w") as fh:
-            fh.write(_script_template.format(" ".join(cmd)))
+            fh.write(_script_template.format("\n".join(cmd)))
             shutil.chown(start_script, user=uid, group=gid)
             os.chmod(start_script, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     async def start(self):
         with TemporaryDirectory() as td:
             local_resource_path = td
-            start_script = os.path.join(local_resource_path, self.start_notebook_cmd)
             stop_script = os.path.join(local_resource_path, self.stop_notebook_cmd)
 
             user = pwd.getpwnam(self.user.name)
@@ -532,7 +554,7 @@ class SSHSpawner(LocalProcessSpawner):
 
             # Create the start script (part of resources)
 
-            await self.create_start_script(start_script, remote_env=remote_env)
+            await self.create_start_script(local_resource_path, remote_env=remote_env)
             await self.create_stop_script(stop_script)
 
             # Set proper ownership to the user we'll run as
@@ -576,8 +598,9 @@ class SSHSpawner(LocalProcessSpawner):
                 )
 
             # Start remote notebook
+            run_cmd = f"pre_{self.start_notebook_cmd}"
             start_notebook_child = self.spawn_as_user(
-                f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target} {os.path.join(self.resource_path, self.start_notebook_cmd)}",
+                f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target} {os.path.join(self.resource_path, run_cmd)}",
                 timeout=None,
             )
 
