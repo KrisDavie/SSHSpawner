@@ -25,7 +25,7 @@ from pexpect import popen_spawn
 from tempfile import TemporaryDirectory
 from jupyterhub.spawner import LocalProcessSpawner
 from traitlets import default
-from traitlets import Bool, Integer, Unicode, Int, List
+from traitlets import Bool, Integer, Unicode, Int, List, Dict
 from jupyterhub.utils import (
     wait_for_http_server,
     make_ssl_context,
@@ -121,18 +121,22 @@ class SSHSpawner(LocalProcessSpawner):
         help="""The local path to the get_port script""",
     ).tag(config=True)
 
-    conda_env_loc = Unicode("", help="Path to a conda env on the remote server.").tag(
-        config=True
-    )
-
-    conda_env_name = Unicode(
-        "",
-        help="Name for a specific environment in the conda env on the remote server.",
+    conda_env_loc = Dict(
+        Unicode(),
+        help="""Dict. Keys are hosts as defined in `ssh_hosts`, values are paths 
+        to a conda env on the corresponding remote server.""",
     ).tag(config=True)
 
-    remote_notebook_env = Unicode(
-        "",
-        help="Environment variable containing remote location for notebooks.",
+    conda_env_name = Dict(
+        Unicode(),
+        help="""Dict. Keys are hosts as defined in `ssh_hosts`, values are the name 
+        for a specific environment in the conda env on the corresponding remote server.""",
+    ).tag(config=True)
+
+    remote_notebook_env = Dict(
+        Unicode(),
+        help="""Dict. Keys are hosts as defined in `ssh_hosts`, values are an 
+        environment variable containing remote location for notebooks.""",
     ).tag(config=True)
 
     remote_notebook_folder = Unicode(
@@ -450,13 +454,15 @@ class SSHSpawner(LocalProcessSpawner):
         gid = user.pw_gid
         env = self.get_env(other_env=remote_env)
 
-        if self.conda_env_loc:
-            if self.conda_env_name:
+        if self.ssh_target in self.conda_env_loc:
+            if self.ssh_target in self.conda_env_name:
                 env[
                     "PATH"
-                ] += f':{os.path.join(self.conda_env_loc, "envs", self.conda_env_name, "bin")}'
+                ] += f':{os.path.join(self.conda_env_loc[self.ssh_target], "envs", self.conda_env_name[self.ssh_target], "bin")}'
             else:
-                env["PATH"] += f':{os.path.join(self.conda_env_loc, "bin")}'
+                env[
+                    "PATH"
+                ] += f':{os.path.join(self.conda_env_loc[self.ssh_target], "bin")}'
 
         quoted_env = ["env"] + [pipes.quote(f"{var}={val}") for var, val in env.items()]
         # environment + cmd + args
@@ -498,13 +504,13 @@ class SSHSpawner(LocalProcessSpawner):
 
             env = self.get_env(other_env=remote_env)
 
-            if self.remote_notebook_env:
+            if self.ssh_target in self.remote_notebook_env:
                 # Specific code for the VSC, sometimes VSC_DATA is missing
-                if self.remote_notebook_env == "VSC_DATA":
+                if self.remote_notebook_env[self.ssh_target] == "VSC_DATA":
                     _vscuser = env["USER"]
                     self.notebook_path = f"/data/leuven/{_vscuser[3:6]}/{_vscuser}"
                 else:
-                    self.notebook_path = env[self.remote_notebook_env]
+                    self.notebook_path = env[self.remote_notebook_env[self.ssh_target]]
                 if not self.notebook_path.startswith("/"):
                     self.notebook_path = f"/{self.notebook_path}"
 
