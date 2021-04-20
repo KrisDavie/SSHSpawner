@@ -353,7 +353,7 @@ class SSHSpawner(LocalProcessSpawner):
             opts = self.ssh_opts(known_hosts=self.known_hosts)
             self.log.info(f"Collecting remote environment from {host}")
             child = self.spawn_as_user(
-                f"ssh {opts} {host} 'env 2>/dev/null' 2>/dev/null"
+                f"ssh {opts} {host} 'source /etc/profile; env 2>/dev/null' 2>/dev/null"
             )
             child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=10)
             return env_str_to_dict(child.before)
