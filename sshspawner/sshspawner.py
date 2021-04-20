@@ -116,9 +116,17 @@ class SSHSpawner(LocalProcessSpawner):
         interaction between user and system ssh settings.""",
     ).tag(config=True)
 
-    get_port_remote_location = Unicode(
-        ".jupyter/jupyterhub/scripts/get_port.py",
-        help="""The local path to the get_port script""",
+    get_port_remote_location = Dict(
+        Unicode(),
+        help="""Dict. Keys are hosts as defined in `ssh_hosts`, 
+        values are paths to remote paths to the get_port script""",
+    ).tag(config=True)
+
+    cmd = Dict(
+        key_trait=Unicode(),
+        value_trait=List(),
+        help="""Dict. Keys are hosts as defined in `ssh_hosts`, values are commands 
+        to run a jupyterhub-singleuser instance""",
     ).tag(config=True)
 
     conda_env_loc = Dict(
@@ -167,6 +175,7 @@ class SSHSpawner(LocalProcessSpawner):
         self.pid = state.get("pid", 0)
         self.ssh_target = state.get("ssh_target", "")
         self.port = state.get("port", "")
+        cmd = self.cmd[self.ssh_target]
 
         proc_found = False
 
@@ -198,7 +207,7 @@ class SSHSpawner(LocalProcessSpawner):
             )
 
             check_server_exists = self.spawn_as_user(
-                f"ssh {opts} {self.ssh_target} \"ps x | grep '{self.cmd[0]} --port={self.port}' | wc -l\" 2>/dev/null",
+                f"ssh {opts} {self.ssh_target} \"ps x | grep '{cmd[0]} --port={self.port}' | wc -l\" 2>/dev/null",
                 timeout=None,
             )
 
@@ -431,6 +440,8 @@ class SSHSpawner(LocalProcessSpawner):
         key_base_name = os.path.basename(paths["keyfile"])
         cert_base_name = os.path.basename(paths["certfile"])
         ca_base_name = os.path.basename(paths["cafile"])
+        host = pipes.quote(self.user_options["host"])
+        self.resource_path = os.path.join(self.resource_path, host)
 
         key = os.path.join(self.resource_path, key_base_name)
         cert = os.path.join(self.resource_path, cert_base_name)
@@ -446,10 +457,11 @@ class SSHSpawner(LocalProcessSpawner):
         user = pwd.getpwnam(self.user.name)
         uid = user.pw_uid
         gid = user.pw_gid
+        cmd = self.cmd[self.ssh_target]
 
         with open(stop_script, "w") as fh:
             fh.write(
-                f"ps x | grep '{self.cmd[0]} --port={self.port}' | awk '{{print $1}}' | xargs kill"
+                f"ps x | grep '{cmd[0]} --port={self.port}' | awk '{{print $1}}' | xargs kill"
             )
             shutil.chown(stop_script, user=uid, group=gid)
             os.chmod(stop_script, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
@@ -459,6 +471,7 @@ class SSHSpawner(LocalProcessSpawner):
         uid = user.pw_uid
         gid = user.pw_gid
         env = self.get_env(other_env=remote_env)
+        cmd = self.cmd[self.ssh_target]
 
         pre_start_script = os.path.join(
             local_resource_path, f"pre_{self.start_notebook_cmd}"
@@ -487,7 +500,7 @@ class SSHSpawner(LocalProcessSpawner):
             os.chmod(pre_start_script, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
         # environment + cmd + args
-        cmd = [" ".join(self.cmd + self.get_args())]
+        cmd = [" ".join(cmd + self.get_args())]
         if self.ssh_target in self.pre_server_startup_script:
             cmd = [self.pre_server_startup_script[self.ssh_target]] + cmd
 
@@ -517,7 +530,7 @@ class SSHSpawner(LocalProcessSpawner):
                 self.cert_paths = self.stage_certs(self.cert_paths, local_resource_path)
 
             ports_proc = self.spawn_as_user(
-                f"ssh {opts} {self.ssh_target} /usr/bin/python {self.get_port_remote_location}"
+                f"ssh {opts} {self.ssh_target} /usr/bin/python {self.get_port_remote_location[self.ssh_target]}"
             )
 
             ports_proc.expect("[0-9]{1,5}\s[0-9]{1,5}")
@@ -634,6 +647,8 @@ class SSHSpawner(LocalProcessSpawner):
         self.log.info(
             f"Stopping user {self.user.name}'s notebook at port {self.port} on host {self.ssh_target}"
         )
+        host = pipes.quote(self.user_options["host"])
+        self.resource_path = os.path.join(self.resource_path, host)
 
         stop_child = self.spawn_as_user(
             f"ssh {self.ssh_opts(known_hosts=self.known_hosts)} {self.ssh_target} {os.path.join(self.resource_path, self.stop_notebook_cmd)}"
