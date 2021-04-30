@@ -161,7 +161,7 @@ class SSHSpawner(LocalProcessSpawner):
     lab_enabled = Bool(True, help="Using jupyterlab?").tag(config=True)
 
     _stopping = False
-    _started = True
+    _started = False
 
     def load_state(self, state):
         """Restore state about spawned single-user server after a hub restart.
@@ -220,6 +220,8 @@ class SSHSpawner(LocalProcessSpawner):
             else:
                 self._started = True
 
+                self.resource_path = os.path.join(self.resource_path, self.ssh_target)
+
                 start_tunnel_child = self.spawn_as_user(
                     f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target}",
                     timeout=None,
@@ -241,6 +243,13 @@ class SSHSpawner(LocalProcessSpawner):
             state["port"] = self.port
 
         return state
+
+    def clear_state(self):
+        """clear any state (called after shutdown)"""
+        super().clear_state()
+        self.pid = 0
+        self.ssh_target = ""
+        self.port = 0
 
     @property
     def ssh_socket(self):
