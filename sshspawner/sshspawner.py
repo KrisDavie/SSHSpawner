@@ -214,21 +214,21 @@ class SSHSpawner(LocalProcessSpawner):
             check_server_exists.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=15)
             self.log.debug(check_server_exists.before)
             try:
-            if int(check_server_exists.before.split()[-1]) <= 2:
-                self.log.error(
-                    f"Existing server on host {self.ssh_target}:{self.port} does not exist remotely for user {self.user.name}!"
-                )
-            else:
-                self._started = True
+                if int(check_server_exists.before.split()[-1]) <= 2:
+                    self.log.error(
+                        f"Existing server on host {self.ssh_target}:{self.port} does not exist remotely for user {self.user.name}!"
+                    )
+                else:
+                    self._started = True
 
-                self.resource_path = os.path.join(self.resource_path, self.ssh_target)
+                    self.resource_path = os.path.join(self.resource_path, self.ssh_target)
 
-                start_tunnel_child = self.spawn_as_user(
-                    f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target}",
-                    timeout=None,
-                )
-                self.proc = start_tunnel_child.proc
-                self.pid = self.proc.pid
+                    start_tunnel_child = self.spawn_as_user(
+                        f"ssh {opts} -L {self.port}:127.0.0.1:{self.port} {self.ssh_target}",
+                        timeout=None,
+                    )
+                    self.proc = start_tunnel_child.proc
+                    self.pid = self.proc.pid
             except ValueError as e:
                 self.log.error(
                     f"""Could not determine if server exists. ps x output: 
@@ -331,7 +331,7 @@ class SSHSpawner(LocalProcessSpawner):
 
         return f"-T " + " ".join([f"-o {opt}={val}" for opt, val in opts.items()])
 
-    def spawn_as_user(self, cmd, timeout=10):
+    def spawn_as_user(self, cmd, timeout=15):
         """Run pexpect as the user spawning the notebook
 
         This method attaches kerberos credentials to the command env if they
@@ -383,7 +383,7 @@ class SSHSpawner(LocalProcessSpawner):
             child = self.spawn_as_user(
                 f"ssh {opts} {host} 'source /etc/profile; env 2>/dev/null' 2>/dev/null"
             )
-            child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=10)
+            child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=30)
             return env_str_to_dict(child.before)
 
     def get_env(self, other_env=None):
@@ -459,8 +459,6 @@ class SSHSpawner(LocalProcessSpawner):
         key_base_name = os.path.basename(paths["keyfile"])
         cert_base_name = os.path.basename(paths["certfile"])
         ca_base_name = os.path.basename(paths["cafile"])
-        host = pipes.quote(self.user_options["host"])
-        self.resource_path = os.path.join(self.resource_path, host)
 
         key = os.path.join(self.resource_path, key_base_name)
         cert = os.path.join(self.resource_path, cert_base_name)
@@ -675,8 +673,7 @@ class SSHSpawner(LocalProcessSpawner):
         self.log.info(
             f"Stopping user {self.user.name}'s notebook at port {self.port} on host {self.ssh_target}"
         )
-        host = pipes.quote(self.user_options["host"])
-        self.resource_path = os.path.join(self.resource_path, host)
+        self.log.debug(f"{self.resource_path}")
 
         stop_child = self.spawn_as_user(
             f"ssh {self.ssh_opts(known_hosts=self.known_hosts)} {self.ssh_target} {os.path.join(self.resource_path, self.stop_notebook_cmd)}"
@@ -728,22 +725,22 @@ class SSHSpawner(LocalProcessSpawner):
             loops_to_do = 10
             loop_timeout = 5
             for loop in range(loops_to_do + 2):
-            try:
+                try:
                     reachable = await wait_for_http_server(url, ssl_context=ctx, timeout=loop_timeout)
-            except Exception as e:
-                if isinstance(e, TimeoutError):
+                except Exception as e:
+                    if isinstance(e, TimeoutError):
                         self.log.debug(f"Server didn't respond on loop: {loop}")
                         if loop > loops_to_do:
-                    self.log.warning(
+                            self.log.warning(
                             f"Unable to reach {self.user.name}'s server for {loop * loop_timeout} seconds. "
-                    )
-                    return 1
-                else:
+                            )
+                            return 1
+                        else:
                             continue
                     else:
-                    e.reason = "error"
-                    self.log.warning(f"Error reaching {self.user.name}'s server: {e}")
-                    return 2
-            else:
+                        e.reason = "error"
+                        self.log.warning(f"Error reaching {self.user.name}'s server: {e}")
+                        return 2
+                else:
                     self.log.debug(f'Server responded on loop: {loop}')
-                return None if reachable else 0
+                    return None if reachable else 0                
