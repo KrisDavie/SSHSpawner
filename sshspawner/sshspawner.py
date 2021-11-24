@@ -211,8 +211,9 @@ class SSHSpawner(LocalProcessSpawner):
                 timeout=None,
             )
 
-            check_server_exists.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=10)
-
+            check_server_exists.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=15)
+            self.log.debug(check_server_exists.before)
+            try:
             if int(check_server_exists.before.split()[-1]) <= 2:
                 self.log.error(
                     f"Existing server on host {self.ssh_target}:{self.port} does not exist remotely for user {self.user.name}!"
@@ -228,6 +229,15 @@ class SSHSpawner(LocalProcessSpawner):
                 )
                 self.proc = start_tunnel_child.proc
                 self.pid = self.proc.pid
+            except ValueError as e:
+                self.log.error(
+                    f"""Could not determine if server exists. ps x output: 
+                    {check_server_exists.before}
+                    Error: {e}
+                    """
+                )
+
+
 
     def get_state(self):
         """Save state that is needed to restore this spawner instance after a hub restore.
