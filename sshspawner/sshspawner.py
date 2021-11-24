@@ -561,8 +561,17 @@ class SSHSpawner(LocalProcessSpawner):
             if self.ssh_target in self.remote_notebook_env:
                 # Specific code for the VSC, sometimes VSC_DATA is missing
                 if self.remote_notebook_env[self.ssh_target] == "VSC_DATA":
-                    _vscuser = env["USER"]
-                    self.notebook_path = f"/data/leuven/{_vscuser[3:6]}/{_vscuser}"
+                    # _vscuser = env["USER"]
+                    _vscuser = self.spawn_as_user(
+                        f"ssh {opts} {self.ssh_target} /usr/bin/whoami"
+                    )
+                    _vscuser.expect("vsc[0-9]+")
+                    vscuser = _vscuser.after
+                    if not vscuser.startswith('vsc'):
+                        self.log.debug('Username is not correct!')
+                        self.log.debug(_vscuser)
+                        self.log.debug(vscuser)
+                    self.notebook_path = f"/data/leuven/{vscuser[3:6]}/{vscuser}"
                 else:
                     self.notebook_path = env[self.remote_notebook_env[self.ssh_target]]
                 if not self.notebook_path.startswith("/"):
