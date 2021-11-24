@@ -711,6 +711,7 @@ class SSHSpawner(LocalProcessSpawner):
             return status
         elif not os.path.exists(self.ssh_socket) and not self._started:
             # tunnel is closed or non-existent
+            self.clear_state()
             return 0
         else:
             if self.user.settings["internal_ssl"]:
@@ -724,19 +725,25 @@ class SSHSpawner(LocalProcessSpawner):
                 ctx = None
             ip = self.ip or "127.0.0.1"
             url = f"{protocol}://{ip}:{self.port}"
+            loops_to_do = 10
+            loop_timeout = 5
+            for loop in range(loops_to_do + 2):
             try:
-                reachable = await wait_for_http_server(url, ssl_context=ctx)
+                    reachable = await wait_for_http_server(url, ssl_context=ctx, timeout=loop_timeout)
             except Exception as e:
                 if isinstance(e, TimeoutError):
-                    e.reason = "timeout"
+                        self.log.debug(f"Server didn't respond on loop: {loop}")
+                        if loop > loops_to_do:
                     self.log.warning(
-                        f"Unable to reach {self.user.name}'s server for 10 seconds. "
-                        f"Giving up: {e}",
+                            f"Unable to reach {self.user.name}'s server for {loop * loop_timeout} seconds. "
                     )
                     return 1
                 else:
+                            continue
+                    else:
                     e.reason = "error"
                     self.log.warning(f"Error reaching {self.user.name}'s server: {e}")
                     return 2
             else:
+                    self.log.debug(f'Server responded on loop: {loop}')
                 return None if reachable else 0
